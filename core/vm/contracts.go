@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/secp256r1"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	poseidonHash "github.com/iden3/go-iden3-crypto/poseidon"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -124,23 +125,24 @@ var PrecompiledContractsCancun = PrecompiledContracts{
 // PrecompiledContractsPrague contains the set of pre-compiled Ethereum
 // contracts used in the Prague release.
 var PrecompiledContractsPrague = PrecompiledContracts{
-	common.BytesToAddress([]byte{0x01}): &ecrecover{},
-	common.BytesToAddress([]byte{0x02}): &sha256hash{},
-	common.BytesToAddress([]byte{0x03}): &ripemd160hash{},
-	common.BytesToAddress([]byte{0x04}): &dataCopy{},
-	common.BytesToAddress([]byte{0x05}): &bigModExp{eip2565: true, eip7823: false, eip7883: false},
-	common.BytesToAddress([]byte{0x06}): &bn256AddIstanbul{},
-	common.BytesToAddress([]byte{0x07}): &bn256ScalarMulIstanbul{},
-	common.BytesToAddress([]byte{0x08}): &bn256PairingIstanbul{},
-	common.BytesToAddress([]byte{0x09}): &blake2F{},
-	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
-	common.BytesToAddress([]byte{0x0b}): &bls12381G1Add{},
-	common.BytesToAddress([]byte{0x0c}): &bls12381G1MultiExp{},
-	common.BytesToAddress([]byte{0x0d}): &bls12381G2Add{},
-	common.BytesToAddress([]byte{0x0e}): &bls12381G2MultiExp{},
-	common.BytesToAddress([]byte{0x0f}): &bls12381Pairing{},
-	common.BytesToAddress([]byte{0x10}): &bls12381MapG1{},
-	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
+	common.BytesToAddress([]byte{0x01}):      &ecrecover{},
+	common.BytesToAddress([]byte{0x02}):      &sha256hash{},
+	common.BytesToAddress([]byte{0x03}):      &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}):      &dataCopy{},
+	common.BytesToAddress([]byte{0x05}):      &bigModExp{eip2565: true, eip7823: false, eip7883: false},
+	common.BytesToAddress([]byte{0x06}):      &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{0x07}):      &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{0x08}):      &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{0x09}):      &blake2F{},
+	common.BytesToAddress([]byte{0x0a}):      &kzgPointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}):      &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}):      &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0d}):      &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0e}):      &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x0f}):      &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x10}):      &bls12381MapG1{},
+	common.BytesToAddress([]byte{0x11}):      &bls12381MapG2{},
+	common.BytesToAddress([]byte{0x1, 0x00}): &poseidon{},
 }
 
 var PrecompiledContractsBLS = PrecompiledContractsPrague
@@ -1729,4 +1731,49 @@ func (c *p256Verify) Run(input []byte) ([]byte, error) {
 
 func (c *p256Verify) Name() string {
 	return "P256VERIFY"
+}
+
+type poseidon struct{}
+
+const (
+	PoseidonPerWordGas = 5400
+	PoseidonBaseGas    = 600
+)
+
+var (
+	errorPoseidonInvalidInputLength = errors.New("invalid input length")
+)
+
+func (c *poseidon) RequiredGas(input []byte) uint64 {
+	return uint64(len(input)+31)/32*PoseidonPerWordGas + PoseidonBaseGas
+}
+
+func (c *poseidon) Run(input []byte) ([]byte, error) {
+	if len(input) == 0 || len(input)%32 != 0 {
+		return nil, errorPoseidonInvalidInputLength
+	}
+
+	length := len(input) / 32
+
+	if length > 16 {
+		return nil, errorPoseidonInvalidInputLength
+	}
+
+	elements := make([]*big.Int, length)
+
+	for index := 0; index < length; index += 1 {
+		elements[index] = new(big.Int).SetBytes(input[index*32 : (index+1)*32])
+	}
+
+	hash, err := poseidonHash.Hash(elements)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return hash.FillBytes(make([]byte, 32)), nil
+}
+
+func (c *poseidon) Name() string {
+	return "POSEIDON"
 }
