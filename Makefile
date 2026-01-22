@@ -29,7 +29,8 @@ test: all
 	$(GORUN) build/ci.go test
 
 #? lint: Run certain pre-selected linters.
-lint: ## Run linters.
+## Run linters.
+lint: all
 	$(GORUN) build/ci.go lint
 
 #? fmt: Ensure consistent code formatting.
