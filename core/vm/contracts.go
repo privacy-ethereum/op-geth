@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/secp256r1"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
+	bjj "github.com/iden3/go-iden3-crypto/babyjub"
 	poseidonHash "github.com/iden3/go-iden3-crypto/poseidon"
 	"golang.org/x/crypto/ripemd160"
 )
@@ -125,24 +126,23 @@ var PrecompiledContractsCancun = PrecompiledContracts{
 // PrecompiledContractsPrague contains the set of pre-compiled Ethereum
 // contracts used in the Prague release.
 var PrecompiledContractsPrague = PrecompiledContracts{
-	common.BytesToAddress([]byte{0x01}):      &ecrecover{},
-	common.BytesToAddress([]byte{0x02}):      &sha256hash{},
-	common.BytesToAddress([]byte{0x03}):      &ripemd160hash{},
-	common.BytesToAddress([]byte{0x04}):      &dataCopy{},
-	common.BytesToAddress([]byte{0x05}):      &bigModExp{eip2565: true, eip7823: false, eip7883: false},
-	common.BytesToAddress([]byte{0x06}):      &bn256AddIstanbul{},
-	common.BytesToAddress([]byte{0x07}):      &bn256ScalarMulIstanbul{},
-	common.BytesToAddress([]byte{0x08}):      &bn256PairingIstanbul{},
-	common.BytesToAddress([]byte{0x09}):      &blake2F{},
-	common.BytesToAddress([]byte{0x0a}):      &kzgPointEvaluation{},
-	common.BytesToAddress([]byte{0x0b}):      &bls12381G1Add{},
-	common.BytesToAddress([]byte{0x0c}):      &bls12381G1MultiExp{},
-	common.BytesToAddress([]byte{0x0d}):      &bls12381G2Add{},
-	common.BytesToAddress([]byte{0x0e}):      &bls12381G2MultiExp{},
-	common.BytesToAddress([]byte{0x0f}):      &bls12381Pairing{},
-	common.BytesToAddress([]byte{0x10}):      &bls12381MapG1{},
-	common.BytesToAddress([]byte{0x11}):      &bls12381MapG2{},
-	common.BytesToAddress([]byte{0x1, 0x00}): &poseidon{},
+	common.BytesToAddress([]byte{0x01}): &ecrecover{},
+	common.BytesToAddress([]byte{0x02}): &sha256hash{},
+	common.BytesToAddress([]byte{0x03}): &ripemd160hash{},
+	common.BytesToAddress([]byte{0x04}): &dataCopy{},
+	common.BytesToAddress([]byte{0x05}): &bigModExp{eip2565: true, eip7823: false, eip7883: false},
+	common.BytesToAddress([]byte{0x06}): &bn256AddIstanbul{},
+	common.BytesToAddress([]byte{0x07}): &bn256ScalarMulIstanbul{},
+	common.BytesToAddress([]byte{0x08}): &bn256PairingIstanbul{},
+	common.BytesToAddress([]byte{0x09}): &blake2F{},
+	common.BytesToAddress([]byte{0x0a}): &kzgPointEvaluation{},
+	common.BytesToAddress([]byte{0x0b}): &bls12381G1Add{},
+	common.BytesToAddress([]byte{0x0c}): &bls12381G1MultiExp{},
+	common.BytesToAddress([]byte{0x0d}): &bls12381G2Add{},
+	common.BytesToAddress([]byte{0x0e}): &bls12381G2MultiExp{},
+	common.BytesToAddress([]byte{0x0f}): &bls12381Pairing{},
+	common.BytesToAddress([]byte{0x10}): &bls12381MapG1{},
+	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
 }
 
 var PrecompiledContractsBLS = PrecompiledContractsPrague
@@ -171,6 +171,11 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x11}): &bls12381MapG2{},
 
 	common.BytesToAddress([]byte{0x1, 0x00}): &p256Verify{},
+
+	common.BytesToAddress([]byte{0x1, 0x01}): &poseidon{},
+	common.BytesToAddress([]byte{0x1, 0x02}): &babyJubJubCurveAdd{},
+	common.BytesToAddress([]byte{0x1, 0x03}): &babyJubJubCurveMul{},
+	common.BytesToAddress([]byte{0x1, 0x04}): &babyJubJubCurveIsOnCurve{},
 }
 
 // PrecompiledContractsP256Verify contains the precompiled Ethereum
@@ -1776,4 +1781,171 @@ func (c *poseidon) Run(input []byte) ([]byte, error) {
 
 func (c *poseidon) Name() string {
 	return "POSEIDON"
+}
+
+const (
+	babyJubJubFieldByteSize   = 32
+	babyJubJubAffinePointSize = 2 * babyJubJubFieldByteSize
+)
+
+var (
+	errorBabyJubJubInvalidInputLength = errors.New("invalid input length")
+	errorBabyJubJubPointNotOnCurve    = errors.New("point not on curve")
+	errorBabyJubJubPointNotInSubgroup = errors.New("point not in subgroup")
+)
+
+const (
+	babyJubJubAddInputSize  = 2 * babyJubJubAffinePointSize
+	babyJubJubAddOutputSize = babyJubJubAffinePointSize
+	babyJubJubAddGas        = 12300
+)
+
+// readAffinePoint parses an affine BabyJubJub curve point from the precompile
+// input buffer at the given point index.
+//
+// The input is interpreted as a sequence of affine points encoded as:
+//
+//	x || y
+//
+// where each coordinate is a fixed-width, big-endian field element of
+// babyJubJubFieldByteSize bytes.
+//
+// The index parameter selects which affine point to read:
+//
+//	index = 0 → first point (bytes [0 : babyJubJubAffinePointSize])
+//	index = 1 → second point (bytes [babyJubJubAffinePointSize : 2*babyJubJubAffinePointSize])
+//
+// This function does not validate whether the returned point lies on the curve;
+// callers must perform curve and subgroup checks if required.
+func readAffinePoint(input []byte, index int) *bjj.Point {
+	xStart := index * babyJubJubAffinePointSize
+	xEnd := xStart + babyJubJubFieldByteSize
+	yStart := xStart + babyJubJubFieldByteSize
+	yEnd := xStart + babyJubJubAffinePointSize
+
+	return &bjj.Point{
+		X: new(big.Int).SetBytes(input[xStart:xEnd]),
+		Y: new(big.Int).SetBytes(input[yStart:yEnd]),
+	}
+}
+
+// marshalPoint serializes an affine BabyJubJub curve point into the fixed-size
+// byte format expected as the return value of the BabyJubJub add precompile.
+//
+// The output encoding is:
+//
+//	x || y
+//
+// where each coordinate is encoded as a big-endian field element padded to
+// babyJubJubFieldByteSize bytes. The returned slice is always exactly
+// babyJubJubAddOutputSize bytes long.
+//
+// The caller must ensure the point is in affine coordinates before calling
+// this function.
+func marshalPoint(point *bjj.Point) []byte {
+	output := make([]byte, babyJubJubAddOutputSize)
+	xBytes := point.X.FillBytes(make([]byte, babyJubJubFieldByteSize))
+	yBytes := point.Y.FillBytes(make([]byte, babyJubJubFieldByteSize))
+
+	copy(output[0:babyJubJubFieldByteSize], xBytes)
+	copy(output[babyJubJubFieldByteSize:babyJubJubAddOutputSize], yBytes)
+
+	return output
+}
+
+type babyJubJubCurveAdd struct{}
+
+func (c *babyJubJubCurveAdd) RequiredGas(input []byte) uint64 {
+	return babyJubJubAddGas
+}
+
+func (c *babyJubJubCurveAdd) Run(input []byte) ([]byte, error) {
+	if len(input) != babyJubJubAddInputSize {
+		return nil, errorBabyJubJubInvalidInputLength
+	}
+
+	point1 := readAffinePoint(input, 0)
+	point2 := readAffinePoint(input, 1)
+
+	if !point1.InCurve() || !point2.InCurve() {
+		return nil, errorBabyJubJubPointNotOnCurve
+	}
+
+	if !point1.InSubGroup() || !point2.InSubGroup() {
+		return nil, errorBabyJubJubPointNotInSubgroup
+	}
+
+	point3 := bjj.NewPoint().Projective().Add(point1.Projective(), point2.Projective()).Affine()
+
+	return marshalPoint(point3), nil
+}
+
+func (c *babyJubJubCurveAdd) Name() string {
+	return "BabyJubJubAdd"
+}
+
+const (
+	babyJubJubMulInputSize = 3 * babyJubJubFieldByteSize
+	babyJubJubMulGas       = 14400
+)
+
+type babyJubJubCurveMul struct{}
+
+func (c *babyJubJubCurveMul) RequiredGas(input []byte) uint64 {
+	return babyJubJubMulGas
+}
+
+func (c *babyJubJubCurveMul) Run(input []byte) ([]byte, error) {
+	if len(input) != babyJubJubMulInputSize {
+		return nil, errorBabyJubJubInvalidInputLength
+	}
+
+	result := bjj.NewPoint()
+	point := readAffinePoint(input, 0)
+
+	if !point.InCurve() {
+		return nil, errorBabyJubJubPointNotOnCurve
+	}
+
+	if !point.InSubGroup() {
+		return nil, errorBabyJubJubPointNotInSubgroup
+	}
+
+	scalar := new(big.Int).SetBytes(input[babyJubJubAffinePointSize : babyJubJubAffinePointSize+babyJubJubFieldByteSize])
+	scalar = scalar.Mod(scalar, bjj.SubOrder)
+
+	return marshalPoint(result.Mul(scalar, point)), nil
+}
+
+func (c *babyJubJubCurveMul) Name() string {
+	return "BabyJubJubMul"
+}
+
+const (
+	babyJubJubIsOnCurveInputSize = 64
+	babyJubJubIsOnCurveGas       = 10_000
+)
+
+type babyJubJubCurveIsOnCurve struct{}
+
+func (c *babyJubJubCurveIsOnCurve) RequiredGas(input []byte) uint64 {
+	return babyJubJubIsOnCurveGas
+}
+
+func (c *babyJubJubCurveIsOnCurve) Run(input []byte) ([]byte, error) {
+	if len(input) != babyJubJubIsOnCurveInputSize {
+		return nil, errorBabyJubJubInvalidInputLength
+	}
+
+	point := readAffinePoint(input, 0)
+
+	if point.InCurve() {
+		return []byte{1}, nil
+	}
+
+	return []byte{0}, nil
+}
+
+func (c *babyJubJubCurveIsOnCurve) Name() string {
+	return "BabyJubJubIsOnCurve"
 }

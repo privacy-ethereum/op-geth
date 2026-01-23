@@ -1,0 +1,107 @@
+[
+  {
+    "Input": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+    "Expected": "01",
+    "Name": "babyJubJubIsOnCurve1",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "162d7e417903fa1c82f2d227e35b846b1133cfca4f558b5feb9fdcd5f81dd90201666cafbf0a30da8b9ebeaf848a1da067a892296f1043188e1705402b6d6854",
+    "Expected": "00",
+    "Name": "babyJubJubIsOnCurve2",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "172dba8d231345b865223308fe44ba307c159de512787257113e2a7137f831b425316c6b88a089801a57e442545e52c559cba980f84f44a8fca45c0f821c5cd7",
+    "Expected": "01",
+    "Name": "babyJubJubIsOnCurve3",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "1e63a5693d8b144378b08379f7ffdcabeb15e2e1490037b346c892925926574c1bd784c890a3b42e0730b2950d0f7a7d87a784a0655b1980ccf698e9f96b23a3",
+    "Expected": "00",
+    "Name": "babyJubJubIsOnCurve4",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "28f4a492bbfdf5eed5ad1b304b95fb96040be5e4281bd288b1955f61bfac0afa304087f15a044598525cf1fb00bae9c4f345802d0537c82c7038fd968d31029e",
+    "Expected": "01",
+    "Name": "babyJubJubIsOnCurve5",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "1de5305a20483a9b39f575599249f4aef3d3e9fc48c762a9751eebef9612bee2275427cf2d61f9e57b0ae58cb9ab3d8a8b33788a837a850aa1b8ee5c5a57e802",
+    "Expected": "00",
+    "Name": "babyJubJubIsOnCurve6",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "06184da392a17823e9c1d38cb50980b17150ffa411965b03f0b0200d9557daa9244a710118db92636e46e3f97bd80093ba7026ff97ca32d387145337e250549c",
+    "Expected": "01",
+    "Name": "babyJubJubIsOnCurve7",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "0167f65996191f02350b87f83226a782ff8ab97556a751e16808f69d580d81940f253b113390992406ff36b3d67b914927444a6cf93fe90db483ba752f8f151e",
+    "Expected": "00",
+    "Name": "babyJubJubIsOnCurve8",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "11c920f3172ed5bc5b8993b72e11d33b6e8eef08cdeebc4aa93b624a1efd662c23201097823a8b12fbf043e9f1ee301773a4956db38cb822a545bdce571e820a",
+    "Expected": "01",
+    "Name": "babyJubJubIsOnCurve9",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "2361f7edcefe029c0c13501185a8559744427f30a8d5d991ff6cf375a2878bd30b0e2e6a98c5cff701eece3a3af8adda35daed94f7624594c898460985b7dccf",
+    "Expected": "00",
+    "Name": "babyJubJubIsOnCurve10",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "0db1a526b027a515e0ab435c1cb7398c2306bc65b3d79ad009ae138536f96720180e8910ea22de5875dbca21d3be5133059f619d82f23650314e723bb85c390e",
+    "Expected": "01",
+    "Name": "babyJubJubIsOnCurve11",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "130a433aaeb543656b8ce21da9a47049be2f9094206c9684d5c1346dd96445ff2026d13c523271da2102c68d9a73ce64b1976b039179928acaabbdf5f1f53b12",
+    "Expected": "00",
+    "Name": "babyJubJubIsOnCurve12",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "2be1a0cdfb66d52ee7ceef69e6dad254b34f19e49bb6188843a46f24862a885c08ce44b8d945e01608a20032c59bef4c16e6f7f6c9cd9a978afe4b9778398622",
+    "Expected": "01",
+    "Name": "babyJubJubIsOnCurve13",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "259cf81e0d8922a5f6c9f69dbf7338058be423ade8964d6c6a0e8db77cbbee25286ef68ee781bbb993210389cb1bb7ea935217788c6224b02fce8d8a6554741d",
+    "Expected": "00",
+    "Name": "babyJubJubIsOnCurve14",
+    "Gas": 10000,
+    "NoBenchmark": false
+  },
+  {
+    "Input": "114dd4788b5a83cb85e070fd1cb439160ed12c1f42beba214038a220d86abb7207654d172bb449ca1f7f4ef96978aac600951df2e90e0a9684b3415f91a84d3d",
+    "Expected": "01",
+    "Name": "babyJubJubIsOnCurve15",
+    "Gas": 10000,
+    "NoBenchmark": false
+  }
+]
