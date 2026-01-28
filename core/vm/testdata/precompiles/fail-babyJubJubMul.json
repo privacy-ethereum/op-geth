@@ -1,0 +1,7 @@
+[
+  {
+    "Input": "",
+    "ExpectedError": "invalid input length",
+    "Name": "babyjubjub_empty_input"
+  }
+]

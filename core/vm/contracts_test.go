@@ -81,6 +81,9 @@ var allPrecompiles = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x2f, 0x0d}): &bls12381G2MultiExpJovian{},
 
 	common.BytesToAddress([]byte{0x3f, 0x01}): &poseidon{},
+	common.BytesToAddress([]byte{0x3f, 0x02}): &babyJubJubCurveAdd{},
+	common.BytesToAddress([]byte{0x3f, 0x03}): &babyJubJubCurveMul{},
+	common.BytesToAddress([]byte{0x3f, 0x04}): &babyJubJubCurveIsOnCurve{},
 }
 
 // EIP-152 test vectors
@@ -460,17 +463,20 @@ func benchJson(name, addr string, b *testing.B) {
 	}
 }
 
-func TestPrecompiledBLS12381G1Add(t *testing.T)      { testJson("blsG1Add", "f0a", t) }
-func TestPrecompiledBLS12381G1Mul(t *testing.T)      { testJson("blsG1Mul", "f0b", t) }
-func TestPrecompiledBLS12381G1MultiExp(t *testing.T) { testJson("blsG1MultiExp", "f0b", t) }
-func TestPrecompiledBLS12381G2Add(t *testing.T)      { testJson("blsG2Add", "f0c", t) }
-func TestPrecompiledBLS12381G2Mul(t *testing.T)      { testJson("blsG2Mul", "f0d", t) }
-func TestPrecompiledBLS12381G2MultiExp(t *testing.T) { testJson("blsG2MultiExp", "f0d", t) }
-func TestPrecompiledBLS12381Pairing(t *testing.T)    { testJson("blsPairing", "f0e", t) }
-func TestPrecompiledBLS12381MapG1(t *testing.T)      { testJson("blsMapG1", "f0f", t) }
-func TestPrecompiledBLS12381MapG2(t *testing.T)      { testJson("blsMapG2", "f10", t) }
-func TestPrecompiledPoseidon(t *testing.T)           { testJson("poseidon", "3f01", t) }
-func TestPrecompiledPointEvaluation(t *testing.T)    { testJson("pointEvaluation", "0a", t) }
+func TestPrecompiledBLS12381G1Add(t *testing.T)       { testJson("blsG1Add", "f0a", t) }
+func TestPrecompiledBLS12381G1Mul(t *testing.T)       { testJson("blsG1Mul", "f0b", t) }
+func TestPrecompiledBLS12381G1MultiExp(t *testing.T)  { testJson("blsG1MultiExp", "f0b", t) }
+func TestPrecompiledBLS12381G2Add(t *testing.T)       { testJson("blsG2Add", "f0c", t) }
+func TestPrecompiledBLS12381G2Mul(t *testing.T)       { testJson("blsG2Mul", "f0d", t) }
+func TestPrecompiledBLS12381G2MultiExp(t *testing.T)  { testJson("blsG2MultiExp", "f0d", t) }
+func TestPrecompiledBLS12381Pairing(t *testing.T)     { testJson("blsPairing", "f0e", t) }
+func TestPrecompiledBLS12381MapG1(t *testing.T)       { testJson("blsMapG1", "f0f", t) }
+func TestPrecompiledBLS12381MapG2(t *testing.T)       { testJson("blsMapG2", "f10", t) }
+func TestPrecompiledPoseidon(t *testing.T)            { testJson("poseidon", "3f01", t) }
+func TestPrecompiledBabyJubJubAdd(t *testing.T)       { testJson("babyJubJubAdd", "3f02", t) }
+func TestPrecompiledBabyJubJubMul(t *testing.T)       { testJson("babyJubJubMul", "3f03", t) }
+func TestPrecompiledBabyJubJubIsOnCurve(t *testing.T) { testJson("babyJubJubIsOnCurve", "3f04", t) }
+func TestPrecompiledPointEvaluation(t *testing.T)     { testJson("pointEvaluation", "0a", t) }
 
 func BenchmarkPrecompiledPointEvaluation(b *testing.B) { benchJson("pointEvaluation", "0a", b) }
 
@@ -482,6 +488,11 @@ func BenchmarkPrecompiledBLS12381Pairing(b *testing.B)    { benchJson("blsPairin
 func BenchmarkPrecompiledBLS12381MapG1(b *testing.B)      { benchJson("blsMapG1", "f0f", b) }
 func BenchmarkPrecompiledBLS12381MapG2(b *testing.B)      { benchJson("blsMapG2", "f10", b) }
 func BenchmarkPrecompiledPoseidon(b *testing.B)           { benchJson("poseidon", "3f01", b) }
+func BenchmarkPrecompiledBabyJubJubAdd(b *testing.B)      { benchJson("babyJubJubAdd", "3f02", b) }
+func BenchmarkPrecompiledBabyJubJubMul(b *testing.B)      { benchJson("babyJubJubMul", "3f03", b) }
+func BenchmarkPrecompiledBabyJubJubIsOnCurve(b *testing.B) {
+	benchJson("babyJubJubIsOnCurve", "3f04", b)
+}
 
 // Failure tests
 func TestPrecompiledBLS12381G1AddFail(t *testing.T)      { testJsonFail("blsG1Add", "f0a", t) }
@@ -494,6 +505,11 @@ func TestPrecompiledBLS12381PairingFail(t *testing.T)    { testJsonFail("blsPair
 func TestPrecompiledBLS12381MapG1Fail(t *testing.T)      { testJsonFail("blsMapG1", "f0f", t) }
 func TestPrecompiledBLS12381MapG2Fail(t *testing.T)      { testJsonFail("blsMapG2", "f10", t) }
 func TestPrecompiledPoseidonFail(t *testing.T)           { testJsonFail("poseidon", "3f01", t) }
+func TestPrecompiledBabyJubJubAddFail(t *testing.T)      { testJsonFail("babyJubJubAdd", "3f02", t) }
+func TestPrecompiledBabyJubJubMulFail(t *testing.T)      { testJsonFail("babyJubJubMul", "3f03", t) }
+func TestPrecompiledBabyJubJubIsOnCurveFail(t *testing.T) {
+	testJsonFail("babyJubJubIsOnCurve", "3f04", t)
+}
 
 func loadJson(name string) ([]precompiledTest, error) {
 	data, err := os.ReadFile(fmt.Sprintf("testdata/precompiles/%v.json", name))
