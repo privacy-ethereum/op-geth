@@ -84,6 +84,7 @@ var allPrecompiles = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x3f, 0x02}): &babyJubJubCurveAdd{},
 	common.BytesToAddress([]byte{0x3f, 0x03}): &babyJubJubCurveMul{},
 	common.BytesToAddress([]byte{0x3f, 0x04}): &babyJubJubCurveIsOnCurve{},
+	common.BytesToAddress([]byte{0x3f, 0x05}): &eddsaVerify{},
 }
 
 // EIP-152 test vectors
@@ -476,6 +477,7 @@ func TestPrecompiledPoseidon(t *testing.T)            { testJson("poseidon", "3f
 func TestPrecompiledBabyJubJubAdd(t *testing.T)       { testJson("babyJubJubAdd", "3f02", t) }
 func TestPrecompiledBabyJubJubMul(t *testing.T)       { testJson("babyJubJubMul", "3f03", t) }
 func TestPrecompiledBabyJubJubIsOnCurve(t *testing.T) { testJson("babyJubJubIsOnCurve", "3f04", t) }
+func TestPrecompiledEddsaVerify(t *testing.T)         { testJson("eddsaVerify", "3f05", t) }
 func TestPrecompiledPointEvaluation(t *testing.T)     { testJson("pointEvaluation", "0a", t) }
 
 func BenchmarkPrecompiledPointEvaluation(b *testing.B) { benchJson("pointEvaluation", "0a", b) }
@@ -493,6 +495,9 @@ func BenchmarkPrecompiledBabyJubJubMul(b *testing.B)      { benchJson("babyJubJu
 func BenchmarkPrecompiledBabyJubJubIsOnCurve(b *testing.B) {
 	benchJson("babyJubJubIsOnCurve", "3f04", b)
 }
+func BenchmarkPrecompiledEddsaVerify(b *testing.B) {
+	benchJson("eddsaVerify", "3f05", b)
+}
 
 // Failure tests
 func TestPrecompiledBLS12381G1AddFail(t *testing.T)      { testJsonFail("blsG1Add", "f0a", t) }
@@ -509,6 +514,9 @@ func TestPrecompiledBabyJubJubAddFail(t *testing.T)      { testJsonFail("babyJub
 func TestPrecompiledBabyJubJubMulFail(t *testing.T)      { testJsonFail("babyJubJubMul", "3f03", t) }
 func TestPrecompiledBabyJubJubIsOnCurveFail(t *testing.T) {
 	testJsonFail("babyJubJubIsOnCurve", "3f04", t)
+}
+func TestPrecompiledEddsaVerifyFail(t *testing.T) {
+	testJsonFail("eddsaVerify", "3f05", t)
 }
 
 func loadJson(name string) ([]precompiledTest, error) {

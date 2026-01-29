@@ -176,6 +176,7 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x02}): &babyJubJubCurveAdd{},
 	common.BytesToAddress([]byte{0x1, 0x03}): &babyJubJubCurveMul{},
 	common.BytesToAddress([]byte{0x1, 0x04}): &babyJubJubCurveIsOnCurve{},
+	common.BytesToAddress([]byte{0x1, 0x05}): &eddsaVerify{},
 }
 
 // PrecompiledContractsP256Verify contains the precompiled Ethereum
@@ -1818,15 +1819,35 @@ const (
 // This function does not validate whether the returned point lies on the curve;
 // callers must perform curve and subgroup checks if required.
 func readAffinePoint(input []byte, index int) *bjj.Point {
-	xStart := index * babyJubJubAffinePointSize
-	xEnd := xStart + babyJubJubFieldByteSize
-	yStart := xStart + babyJubJubFieldByteSize
-	yEnd := xStart + babyJubJubAffinePointSize
+	offset := index * babyJubJubAffinePointSize
+
+	x, offset := readField(input, offset)
+	y, _ := readField(input, offset)
 
 	return &bjj.Point{
-		X: new(big.Int).SetBytes(input[xStart:xEnd]),
-		Y: new(big.Int).SetBytes(input[yStart:yEnd]),
+		X: x,
+		Y: y,
 	}
+}
+
+// readField parses a single BabyJubJub field element from the precompile
+// input buffer at the given byte offset.
+//
+// The input is interpreted as a sequence of fixed-width, big-endian field
+// elements, each encoded in babyJubJubFieldByteSize bytes.
+//
+// The offset parameter specifies the starting byte position of the field
+// element to read. The function returns the parsed field element as a *big.Int
+// along with the updated offset pointing to the next unread byte:
+//
+//	value, nextOffset := readField(input, offset)
+//
+// This function performs no validation or canonicalization of the returned
+// value (e.g. no modulo reduction and no field bounds checks). Callers are
+// responsible for enforcing any required range, curve, or subgroup invariants.
+func readField(input []byte, offset int) (*big.Int, int) {
+	v := new(big.Int).SetBytes(input[offset : offset+babyJubJubFieldByteSize])
+	return v, offset + babyJubJubFieldByteSize
 }
 
 // marshalPoint serializes an affine BabyJubJub curve point into the fixed-size
@@ -1911,7 +1932,8 @@ func (c *babyJubJubCurveMul) Run(input []byte) ([]byte, error) {
 		return nil, errorBabyJubJubPointNotInSubgroup
 	}
 
-	scalar := new(big.Int).SetBytes(input[babyJubJubAffinePointSize : babyJubJubAffinePointSize+babyJubJubFieldByteSize])
+	offset := babyJubJubAffinePointSize
+	scalar, _ := readField(input, offset)
 	scalar = scalar.Mod(scalar, bjj.SubOrder)
 
 	return marshalPoint(result.Mul(scalar, point)), nil
@@ -1948,4 +1970,75 @@ func (c *babyJubJubCurveIsOnCurve) Run(input []byte) ([]byte, error) {
 
 func (c *babyJubJubCurveIsOnCurve) Name() string {
 	return "BabyJubJubIsOnCurve"
+}
+
+const (
+	eddsaVerifyInputSize = 6 * babyJubJubFieldByteSize
+	eddsaVerifyGas       = 270000
+)
+
+var (
+	errorEddsaVerifyInvalidInputLength    = errors.New("invalid input length")
+	errorEddsaVerifyPublicKeyIsNotOnCurve = errors.New("public key is not on curve")
+	errorEddsaVerifyR8IsNotOnCurve        = errors.New("R8 is not on curve")
+	errorEddsaVerifyInvalidS              = errors.New("S is greater than suborder")
+)
+
+type eddsaVerify struct{}
+
+func (c *eddsaVerify) RequiredGas(input []byte) uint64 {
+	return eddsaVerifyGas
+}
+
+func (c *eddsaVerify) Run(input []byte) ([]byte, error) {
+	if len(input) != eddsaVerifyInputSize {
+		return nil, errorEddsaVerifyInvalidInputLength
+	}
+
+	offset := 0
+
+	publicKeyX, offset := readField(input, offset)
+	publicKeyY, offset := readField(input, offset)
+
+	publicKeyPoint := bjj.Point{
+		X: publicKeyX,
+		Y: publicKeyY,
+	}
+
+	if !publicKeyPoint.InCurve() {
+		return nil, errorEddsaVerifyPublicKeyIsNotOnCurve
+	}
+
+	r8X, offset := readField(input, offset)
+	r8Y, offset := readField(input, offset)
+
+	R8 := bjj.Point{
+		X: r8X,
+		Y: r8Y,
+	}
+
+	if !R8.InCurve() {
+		return nil, errorEddsaVerifyR8IsNotOnCurve
+	}
+
+	S, offset := readField(input, offset)
+
+	if S.Cmp(bjj.SubOrder) >= 0 {
+		return nil, errorEddsaVerifyInvalidS
+	}
+
+	message, _ := readField(input, offset)
+
+	signature := &bjj.Signature{R8: &R8, S: S}
+	publicKey := bjj.PublicKey{X: publicKeyPoint.X, Y: publicKeyPoint.Y}
+
+	if publicKey.VerifyPoseidon(message, signature) {
+		return []byte{1}, nil
+	}
+
+	return []byte{0}, nil
+}
+
+func (c *eddsaVerify) Name() string {
+	return "EdDSAVerify"
 }
