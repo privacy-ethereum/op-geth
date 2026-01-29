@@ -1,0 +1,12 @@
+[
+  {
+    "Input": "",
+    "ExpectedError": "invalid input length",
+    "Name": "eddsa_empty_input"
+  },
+  {
+    "Input": "256fa4b5c731334fea712ffceac0972b69e00138120adbcc727bb2e90e96cb8215b86a238c2312a6e02b8edde7ae4f660b0d5c9d109981789a5b6d3b92619ea510f7855c2d502f5058eec6671dfc032240b8bcd8b7a8d132b6f1122c432dcc2310d9f210bf1fc2bc301b81a22f1d4706b4b4ace82ce4ffb647b2e2c263927e6a05724142f56b5a84fc388dbb73a4fce0c9bbd397b98b903ecf3c0373c6615a8620dfc0791fccced18739b1eb764fc04c8bcd7e4be5be923f75bde96bd974e7a212",
+    "ExpectedError": "invalid input length",
+    "Name": "eddsa_max_input"
+  }
+]
