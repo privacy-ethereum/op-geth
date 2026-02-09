@@ -30,6 +30,10 @@ import (
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
+	"github.com/consensys/gnark-crypto/ecc/bn254"
+	"github.com/consensys/gnark/backend/groth16"
+	groth16bn254 "github.com/consensys/gnark/backend/groth16/bn254"
+	"github.com/consensys/gnark/backend/witness"
 	patched_big "github.com/ethereum/go-bigmodexpfix/src/math/big"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bitutil"
@@ -177,6 +181,7 @@ var PrecompiledContractsOsaka = PrecompiledContracts{
 	common.BytesToAddress([]byte{0x1, 0x03}): &babyJubJubCurveMul{},
 	common.BytesToAddress([]byte{0x1, 0x04}): &babyJubJubCurveIsOnCurve{},
 	common.BytesToAddress([]byte{0x1, 0x05}): &eddsaVerify{},
+	common.BytesToAddress([]byte{0x1, 0x06}): NewGroth16Verify(ecc.BN254),
 }
 
 // PrecompiledContractsP256Verify contains the precompiled Ethereum
@@ -1793,6 +1798,7 @@ var (
 	errorBabyJubJubInvalidInputLength = errors.New("invalid input length")
 	errorBabyJubJubPointNotOnCurve    = errors.New("point not on curve")
 	errorBabyJubJubPointNotInSubgroup = errors.New("point not in subgroup")
+	errorBabyJubJubPointInvalid       = errors.New("invalid point")
 )
 
 const (
@@ -1818,16 +1824,51 @@ const (
 //
 // This function does not validate whether the returned point lies on the curve;
 // callers must perform curve and subgroup checks if required.
-func readAffinePoint(input []byte, index int) *bjj.Point {
+func readAffinePoint(input []byte, index int) (*bjj.Point, error) {
 	offset := index * babyJubJubAffinePointSize
 
 	x, offset := readField(input, offset)
 	y, _ := readField(input, offset)
 
+	if x == nil || y == nil {
+		return nil, errorBabyJubJubPointInvalid
+	}
+
 	return &bjj.Point{
 		X: x,
 		Y: y,
+	}, nil
+}
+
+// safeSlice returns a subslice of data from start (inclusive) to end (exclusive)
+// in a panic-free manner.
+//
+// The function performs explicit bounds checking before slicing and returns
+// (nil, false) if the requested range is invalid. A range is considered invalid
+// if any of the following conditions hold:
+//   - start or end is negative
+//   - start is greater than end
+//   - end exceeds the length of the input slice
+//
+// When the range is valid, the returned slice aliases the underlying data and
+// no copying is performed.
+//
+// This helper is intended for use in low-level parsing code (e.g. precompile
+// input decoding), where slice bounds violations must be handled explicitly
+// rather than causing a runtime panic.
+//
+// Example usage:
+//
+//	data, ok := safeSlice(input, offset, offset+n)
+//	if !ok {
+//	    return errorInvalidInput
+//	}
+func safeSlice(data []byte, start, end int) ([]byte, bool) {
+	if start < 0 || end < 0 || start > end || end > len(data) {
+		return nil, false
 	}
+
+	return data[start:end], true
 }
 
 // readField parses a single BabyJubJub field element from the precompile
@@ -1846,8 +1887,13 @@ func readAffinePoint(input []byte, index int) *bjj.Point {
 // value (e.g. no modulo reduction and no field bounds checks). Callers are
 // responsible for enforcing any required range, curve, or subgroup invariants.
 func readField(input []byte, offset int) (*big.Int, int) {
-	v := new(big.Int).SetBytes(input[offset : offset+babyJubJubFieldByteSize])
-	return v, offset + babyJubJubFieldByteSize
+	slice, ok := safeSlice(input, offset, offset+babyJubJubFieldByteSize)
+
+	if !ok {
+		return nil, offset
+	}
+
+	return new(big.Int).SetBytes(slice), offset + babyJubJubFieldByteSize
 }
 
 // marshalPoint serializes an affine BabyJubJub curve point into the fixed-size
@@ -1885,8 +1931,17 @@ func (c *babyJubJubCurveAdd) Run(input []byte) ([]byte, error) {
 		return nil, errorBabyJubJubInvalidInputLength
 	}
 
-	point1 := readAffinePoint(input, 0)
-	point2 := readAffinePoint(input, 1)
+	point1, err := readAffinePoint(input, 0)
+
+	if err != nil {
+		return nil, err
+	}
+
+	point2, err := readAffinePoint(input, 1)
+
+	if err != nil {
+		return nil, err
+	}
 
 	if !point1.InCurve() || !point2.InCurve() {
 		return nil, errorBabyJubJubPointNotOnCurve
@@ -1922,7 +1977,11 @@ func (c *babyJubJubCurveMul) Run(input []byte) ([]byte, error) {
 	}
 
 	result := bjj.NewPoint()
-	point := readAffinePoint(input, 0)
+	point, err := readAffinePoint(input, 0)
+
+	if err != nil {
+		return nil, err
+	}
 
 	if !point.InCurve() {
 		return nil, errorBabyJubJubPointNotOnCurve
@@ -1959,7 +2018,11 @@ func (c *babyJubJubCurveIsOnCurve) Run(input []byte) ([]byte, error) {
 		return nil, errorBabyJubJubInvalidInputLength
 	}
 
-	point := readAffinePoint(input, 0)
+	point, err := readAffinePoint(input, 0)
+
+	if err != nil {
+		return nil, err
+	}
 
 	if point.InCurve() {
 		return []byte{1}, nil
@@ -1999,6 +2062,10 @@ func (c *eddsaVerify) Run(input []byte) ([]byte, error) {
 
 	publicKeyX, offset := readField(input, offset)
 	publicKeyY, offset := readField(input, offset)
+
+	if publicKeyX == nil || publicKeyY == nil {
+		return nil, errorEddsaVerifyInvalidInputLength
+	}
 
 	publicKeyPoint := bjj.Point{
 		X: publicKeyX,
@@ -2041,4 +2108,324 @@ func (c *eddsaVerify) Run(input []byte) ([]byte, error) {
 
 func (c *eddsaVerify) Name() string {
 	return "EdDSAVerify"
+}
+
+type groth16CurveParams struct {
+	proofSize             int
+	vkSize                int
+	g1Size                int
+	singlePublicInputSize int
+}
+
+const (
+	maxPublicInputs           = 64
+	bn254Groth16VerifyBaseGas = 220000
+)
+
+var (
+	errorGroth16VerifyUnsupportedCurve     = errors.New("unsupported curve")
+	errorGroth16VerifyInvalidInputLength   = errors.New("invalid input length")
+	errorGroth16VerifyInvalidProof         = errors.New("invalid proof")
+	errorGroth16VerifyInvalidVerifyingKey  = errors.New("invalid verifying key")
+	errorGroth16VerifyInvalidPublicWitness = errors.New("invalid public witness")
+	panicGroth16Verify                     = errors.New("panic during Groth16 verification")
+	errorInvalidG1                         = errors.New("invalid G1 point")
+	errorInvalidG2                         = errors.New("invalid G2 point")
+)
+
+type solidityBN254Parser struct{}
+
+type SolidityGroth16ByteParser interface {
+	ParseProof(data []byte) (groth16.Proof, error)
+	ParseVerifyingKey(data []byte, numberOfPublicInputs int) (groth16.VerifyingKey, error)
+}
+
+var groth16Params = map[ecc.ID]groth16CurveParams{
+	ecc.BN254: {
+		proofSize:             256,
+		vkSize:                448,
+		g1Size:                64,
+		singlePublicInputSize: 32,
+	},
+}
+
+var solidityProofParsers = map[ecc.ID]SolidityGroth16ByteParser{
+	ecc.BN254: solidityBN254Parser{},
+}
+
+func parseG1(
+	data []byte,
+	offset int,
+	destination *bn254.G1Affine,
+) (int, error) {
+	if slice, ok := safeSlice(data, offset, offset+32); ok {
+		destination.X.SetBytes(slice)
+	} else {
+		return offset, errorInvalidG1
+	}
+
+	if slice, ok := safeSlice(data, offset+32, offset+64); ok {
+		destination.Y.SetBytes(slice)
+	} else {
+		return offset, errorInvalidG1
+	}
+
+	return offset + 64, nil
+}
+
+func parseG2(
+	data []byte,
+	offset int,
+	destination *bn254.G2Affine,
+) (int, error) {
+	if slice, ok := safeSlice(data, offset, offset+32); ok {
+		destination.X.A1.SetBytes(slice)
+	} else {
+		return offset, errorInvalidG2
+	}
+
+	if slice, ok := safeSlice(data, offset+32, offset+64); ok {
+		destination.X.A0.SetBytes(slice)
+	} else {
+		return offset, errorInvalidG2
+	}
+
+	if slice, ok := safeSlice(data, offset+64, offset+96); ok {
+		destination.Y.A1.SetBytes(slice)
+	} else {
+		return offset, errorInvalidG2
+	}
+
+	if slice, ok := safeSlice(data, offset+96, offset+128); ok {
+		destination.Y.A0.SetBytes(slice)
+	} else {
+		return offset, errorInvalidG2
+	}
+
+	return offset + 128, nil
+}
+
+func (p solidityBN254Parser) ParseProof(data []byte) (groth16.Proof, error) {
+	var proof groth16bn254.Proof
+	var err error
+	var offset int
+
+	offset, err = parseG1(data, offset, &proof.Ar)
+
+	if err != nil {
+		return nil, err
+	}
+
+	offset, err = parseG2(data, offset, &proof.Bs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	offset, err = parseG1(data, offset, &proof.Krs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &proof, nil
+}
+
+func (p solidityBN254Parser) ParseVerifyingKey(data []byte, numberOfPublicInputs int) (groth16.VerifyingKey, error) {
+	var vk groth16bn254.VerifyingKey
+	var err error
+	var offset int
+
+	offset, err = parseG1(data, offset, &vk.G1.Alpha)
+
+	if err != nil {
+		return nil, err
+	}
+
+	offset, err = parseG2(data, offset, &vk.G2.Beta)
+
+	if err != nil {
+		return nil, err
+	}
+
+	offset, err = parseG2(data, offset, &vk.G2.Gamma)
+
+	if err != nil {
+		return nil, err
+	}
+
+	offset, err = parseG2(data, offset, &vk.G2.Delta)
+
+	if err != nil {
+		return nil, err
+	}
+
+	vk.G1.K = make([]bn254.G1Affine, numberOfPublicInputs+1)
+
+	for index := range vk.G1.K {
+		offset, err = parseG1(data, offset, &vk.G1.K[index])
+
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Precompute the necessary values (e, gammaNeg, deltaNeg)
+	if err := vk.Precompute(); err != nil {
+		return nil, errorGroth16VerifyInvalidVerifyingKey
+	}
+
+	return &vk, nil
+}
+
+func bytesToPublicWitness(
+	data []byte,
+	curveID ecc.ID,
+	numberOfPublicInputs int,
+) (witness.Witness, error) {
+	w, err := witness.New(curveID.ScalarField())
+
+	if err != nil {
+		return nil, err
+	}
+
+	ch := make(chan any, numberOfPublicInputs)
+	offset := 0
+
+	for range numberOfPublicInputs {
+		if slice, ok := safeSlice(data, offset, offset+32); ok {
+			ch <- new(big.Int).SetBytes(slice)
+		} else {
+			return nil, errorGroth16VerifyInvalidPublicWitness
+		}
+
+		offset += 32
+	}
+
+	close(ch)
+
+	if err := w.Fill(numberOfPublicInputs, 0, ch); err != nil {
+		return nil, errorGroth16VerifyInvalidPublicWitness
+	}
+
+	return w, nil
+}
+
+type groth16Verify struct {
+	curveID ecc.ID
+}
+
+func NewGroth16Verify(curveID ecc.ID) *groth16Verify {
+	return &groth16Verify{curveID: curveID}
+}
+
+func (c *groth16Verify) RequiredGas(input []byte) uint64 {
+	length := len(input)
+	params, ok := groth16Params[c.curveID]
+
+	if !ok {
+		return 0
+	}
+
+	numberOfPublicInputs :=
+		(length - params.proofSize - params.vkSize - params.g1Size) /
+			(params.g1Size + params.singlePublicInputSize)
+
+	return bn254Groth16VerifyBaseGas + (babyJubJubAddGas+babyJubJubMulGas)*uint64(numberOfPublicInputs)
+}
+
+func (c *groth16Verify) Run(input []byte) (ret []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			ret = nil
+			err = panicGroth16Verify
+		}
+	}()
+
+	length := len(input)
+	params, ok := groth16Params[c.curveID]
+
+	if !ok {
+		return nil, errorGroth16VerifyUnsupportedCurve
+	}
+
+	minInputSize := params.proofSize + params.vkSize
+
+	if length < minInputSize {
+		return nil, errorGroth16VerifyInvalidInputLength
+	}
+
+	if length%(params.g1Size+params.singlePublicInputSize) != 0 {
+		return nil, errorGroth16VerifyInvalidInputLength
+	}
+
+	remaining := length - minInputSize
+
+	if remaining%params.singlePublicInputSize != 0 {
+		return nil, errorGroth16VerifyInvalidInputLength
+	}
+
+	numberOfPublicInputs :=
+		(remaining - params.g1Size) /
+			(params.g1Size + params.singlePublicInputSize)
+
+	if numberOfPublicInputs <= 0 || numberOfPublicInputs > maxPublicInputs {
+		return nil, errorGroth16VerifyInvalidInputLength
+	}
+
+	vkTotalSize :=
+		params.vkSize +
+			params.g1Size*(numberOfPublicInputs+1)
+
+	proofBytes, ok := safeSlice(input, 0, params.proofSize)
+
+	if !ok {
+		return nil, errorGroth16VerifyInvalidProof
+	}
+
+	vkBytes, ok := safeSlice(input, params.proofSize, params.proofSize+vkTotalSize)
+
+	if !ok {
+		return nil, errorGroth16VerifyInvalidVerifyingKey
+	}
+
+	publicWitnessBytes, ok := safeSlice(input, params.proofSize+vkTotalSize, params.proofSize+vkTotalSize+numberOfPublicInputs*params.singlePublicInputSize)
+
+	if !ok || len(publicWitnessBytes) != numberOfPublicInputs*params.singlePublicInputSize {
+		return nil, errorGroth16VerifyInvalidPublicWitness
+	}
+
+	parser, ok := solidityProofParsers[c.curveID]
+
+	if !ok {
+		return nil, errorGroth16VerifyUnsupportedCurve
+	}
+
+	proof, err := parser.ParseProof(proofBytes)
+
+	if err != nil {
+		return nil, errorGroth16VerifyInvalidProof
+	}
+
+	vk, err := parser.ParseVerifyingKey(vkBytes, numberOfPublicInputs)
+
+	if err != nil {
+		return nil, errorGroth16VerifyInvalidVerifyingKey
+	}
+
+	publicWitness, err := bytesToPublicWitness(publicWitnessBytes, c.curveID, numberOfPublicInputs)
+
+	if err != nil {
+		return nil, errorGroth16VerifyInvalidPublicWitness
+	}
+
+	if err := groth16.Verify(proof, vk, publicWitness); err != nil {
+		return []byte{0}, nil
+	}
+
+	return []byte{1}, nil
+}
+
+func (c *groth16Verify) Name() string {
+	return fmt.Sprintf("%sGroth16Verify", c.curveID.String())
 }
