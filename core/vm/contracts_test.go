@@ -24,9 +24,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/privacy-ethereum/privacy-precompiles/babyjubjub/add"
+	"github.com/privacy-ethereum/privacy-precompiles/babyjubjub/eddsa"
+	"github.com/privacy-ethereum/privacy-precompiles/babyjubjub/mul"
+	"github.com/privacy-ethereum/privacy-precompiles/babyjubjub/validation"
+	"github.com/privacy-ethereum/privacy-precompiles/poseidon"
+	"github.com/privacy-ethereum/privacy-precompiles/verifier/groth16"
 )
 
 // precompiledTest defines the input/output pairs for precompiled contract tests.
@@ -81,12 +86,12 @@ var allPrecompiles = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{0x2f, 0x0b}): &bls12381G1MultiExpJovian{},
 	common.BytesToAddress([]byte{0x2f, 0x0d}): &bls12381G2MultiExpJovian{},
 
-	common.BytesToAddress([]byte{0x3f, 0x01}): &poseidon{},
-	common.BytesToAddress([]byte{0x3f, 0x02}): &babyJubJubCurveAdd{},
-	common.BytesToAddress([]byte{0x3f, 0x03}): &babyJubJubCurveMul{},
-	common.BytesToAddress([]byte{0x3f, 0x04}): &babyJubJubCurveIsOnCurve{},
-	common.BytesToAddress([]byte{0x3f, 0x05}): &eddsaVerify{},
-	common.BytesToAddress([]byte{0x3f, 0x06}): NewGroth16Verify(ecc.BN254),
+	common.BytesToAddress([]byte{0x3f, 0x01}): &poseidon.Poseidon{},
+	common.BytesToAddress([]byte{0x3f, 0x02}): &add.BabyJubJubCurveAdd{},
+	common.BytesToAddress([]byte{0x3f, 0x03}): &mul.BabyJubJubCurveMul{},
+	common.BytesToAddress([]byte{0x3f, 0x04}): &validation.BabyJubJubCurveValidatePoint{},
+	common.BytesToAddress([]byte{0x3f, 0x05}): &eddsa.BabyJubJubCurveEdDSAVerify{},
+	common.BytesToAddress([]byte{0x3f, 0x06}): groth16.NewGroth16BN254Verify(),
 }
 
 // EIP-152 test vectors
